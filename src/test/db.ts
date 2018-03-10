@@ -5,7 +5,8 @@ import {
 } from "../index";
 import uuid = require("uuid");
 import * as chai from 'chai';
-import * as chaiAsPromised from 'chai-as-promised';
+import chaiAsPromised from 'chai-as-promised';
+import {SqliteConnection} from "../sqlite-connection";
 
 should();
 chai.use(chaiAsPromised);
@@ -15,7 +16,7 @@ describe('Database', function() {
     let db: Database;
 
     beforeEach(async function() {
-      db = await Database.open(':memory:');
+      db = await SqliteConnection.createDb();
     });
 
     it("should create a simple schema", function () {
@@ -148,7 +149,7 @@ describe('Database', function() {
 
   describe("flushSchema", function () {
     it("should flush a simple schema without errors", async function () {
-      let db = await Database.open(':memory:');
+      let db = await SqliteConnection.createDb();
       db.define('foo', {
         name: { typeHint: TypeHint.Text },
         value: { typeHint: TypeHint.Text }
@@ -162,7 +163,7 @@ describe('Database', function() {
     let fooModel: Model<any>;
 
     beforeEach(async function() {
-      db = await Database.open(':memory:');
+      db = await SqliteConnection.createDb();
       fooModel = db.define('foo', {
         id: { typeHint: TypeHint.Integer, primaryKey: true },
         name: { typeHint: TypeHint.Text, unique: true, allowNull: false },
@@ -220,7 +221,7 @@ describe('Database', function() {
     let db: Database;
 
     beforeEach(async function() {
-      db = await Database.open(':memory:');
+      db = await SqliteConnection.createDb();
     });
 
     it("primary key should be accesible", async function () {
@@ -260,7 +261,7 @@ describe('Database', function() {
     let fooModel: Model<any>;
 
     beforeEach(async function() {
-      db = await Database.open(':memory:');
+      db = await SqliteConnection.createDb();
       fooModel = db.define('foo', {
         name: { typeHint: TypeHint.Text, unique: true, allowNull: false },
         value: { typeHint: TypeHint.Text }
@@ -298,7 +299,7 @@ describe('Database', function() {
     let fooModel: Model<any>;
 
     beforeEach(async function() {
-      db = await Database.open(':memory:');
+      db = await SqliteConnection.createDb();
       fooModel = db.define('foo', {
         name: { typeHint: TypeHint.Text, unique: true, allowNull: false },
         value: { typeHint: TypeHint.Text },
@@ -462,7 +463,7 @@ describe('Database', function() {
     let fooModel: Model<any>;
 
     beforeEach(async function() {
-      db = await Database.open(':memory:');
+      db = await SqliteConnection.createDb();
       fooModel = db.define('foo', {
         name: { typeHint: TypeHint.Text },
         value: { typeHint: TypeHint.Text },
@@ -510,7 +511,7 @@ describe('Database', function() {
         num: number
       }
 
-      let db = await Database.open(':memory:');
+      let db = await SqliteConnection.createDb();
 
       let barModel = db.define<Bar>('bar', {
         name: { },
@@ -540,7 +541,7 @@ describe('Database', function() {
         num: number
       }
 
-      let db = await Database.open(':memory:');
+      let db = await SqliteConnection.createDb();
 
       let barModel = db.define<Bar>('bar', {
         name: { },
@@ -581,7 +582,7 @@ describe('Database', function() {
     let barModel: Model<Bar>;
 
     beforeEach(async function() {
-      db = await Database.open(':memory:');
+      db = await SqliteConnection.createDb();
 
       fooModel = db.define<Foo>('foo', {
         id: { primaryKey: true },
@@ -701,7 +702,10 @@ describe('Database', function() {
     let barModel: Model<Bar>;
 
     beforeEach(async function() {
-      db = await Database.open(':memory:', { shouldCreate: true });
+      db = await SqliteConnection.createDb({
+        filename: ':memory:',
+        shouldCreate: true
+      });
 
       fooModel = db.define<Foo>('foo', {
         id: { primaryKey: true, typeHint: TypeHint.Integer },
@@ -888,7 +892,10 @@ describe('Database', function() {
     let foobarModel: Model<FooBar>;
 
     beforeEach(async function() {
-      db = await Database.open(':memory:', { shouldCreate: true });
+      db = await SqliteConnection.createDb({
+        filename: ':memory:',
+        shouldCreate: true
+      });
 
       fooModel = db.define<Foo>('foo', {
         id: { primaryKey: true },

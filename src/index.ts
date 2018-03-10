@@ -1,10 +1,10 @@
-import * as sqlite from 'better-sqlite3';
 import {capitalize, isAlphaCode, isDigitCode, mapFromObject} from "./helpers";
+import {AbstractConnection, IRunResult, IStatement} from "./connection";
 
 const ROWID = 'rowid';
 
 /**
- * Base class for all ORM instances
+ * Base class for all instances of database-mapped objects.
  */
 export class DatabaseInstance<T> {
   constructor(db: Database, model: Model<T>) {
@@ -1413,7 +1413,7 @@ export interface FieldSpec {
   defaultValue?: string|number;
 
   /**
-   * Routing for generating a default value for omitted properties when building new instances.
+   * Routine for generating a default value for omitted properties when building new instances.
    * When creating a new instance with Model.build function, this function is called for each field.
    * This function is called before `validate` and `serialize`.
    * @param given The value for this field as given to Model.build
@@ -1533,11 +1533,6 @@ export interface ModelOptions {
   updateTimestamp?: boolean;
 
   defaultSorting?: string|SortProp|null;
-}
-
-export interface DatabaseOpenOptions {
-  shouldCreate?: boolean;
-  inMemory?: boolean;
 }
 
 export enum SortOrder {
@@ -1769,7 +1764,10 @@ export class Database {
       throw new Error('Database schema has already been flushed');
     }
     let schema = this.createSchema();
-    await this._db.exec(schema);
+    if (!this._connection) {
+      throw new Error("Cannot flush schema: no database connection");
+    }
+    await this._connection.exec(schema);
     this._schemaFlushed = true;
   }
 
@@ -1791,7 +1789,7 @@ export class Database {
     let valuesPlaceholders = new Array(values.length).fill('?').join(', ');
 
     let sql = `INSERT INTO ${inst.$model.name} (${columns.join(', ')}) VALUES (${valuesPlaceholders})`;
-    let runResult = this._prepare(sql, values).run();
+    let runResult = await this._run(sql, values);
 
     // if we have a field for a primary key, but it is not specified explicitly, we should set it now
     let pkName = inst.$model.getPrimaryKeyName();
@@ -1824,7 +1822,7 @@ export class Database {
     values.push(inst.$rowId);
 
     let sql = `UPDATE ${inst.$model.name} SET ${placeholders} WHERE ${pk} = ?`;
-    await this._prepare(sql, values).run();
+    await this._run(sql, values);
   }
 
   async removeInstance(inst: DatabaseInstance<any>): Promise<void> {
@@ -1837,13 +1835,13 @@ export class Database {
     let sql = `DELETE FROM ${inst.$model.name} WHERE ${pk} = ?`;
     let values = [inst.$rowId];
 
-    await this._prepare(sql, values).run();
+    await this._run(sql, values);
   }
 
   async find<T>(model: Model<T>, options: FindOptions): Promise<FindResult<T>> {
     let query = SelectQueryBuilder.buildSelect(model, options);
 
-    let sqlResults = this._prepare(query.selectQuery, query.bound).all();
+    let sqlResults = await this._all(query.selectQuery, query.bound);
 
     let result: FindResult<T> = {
       totalCount: null,
@@ -1866,7 +1864,7 @@ export class Database {
     }
 
     if (options.fetchTotalCount === true && query.countQuery) {
-      let countResult = this._prepare(query.countQuery, query.bound).get();
+      let countResult = await this._get(query.countQuery, query.bound);
       result.totalCount = countResult['COUNT(*)'] as number;
     }
 
@@ -1878,7 +1876,7 @@ export class Database {
     if (!query.query) {
       return;
     }
-    await this._prepare(query.query, query.bound).run();
+    await this._run(query.query, query.bound);
   }
 
   async remove<T>(model: Model<T>, options: RemoveOptions): Promise<void> {
@@ -1886,68 +1884,72 @@ export class Database {
     if (!query.query) {
       return;
     }
-    await this._prepare(query.query, query.bound).run();
+    await this._run(query.query, query.bound);
   }
 
   async removeAll<T>(model: Model<T>): Promise<void> {
     let sql = `DELETE FROM ${model.name}`;
-    await this._prepare(sql).run();
+    await this._run(sql);
   }
 
   async count(model: Model<any>): Promise<number> {
     let sql = `SELECT COUNT(*) FROM ${model.name}`;
-    return this._prepare(sql).get()['COUNT(*)'] as number;
+    return (await this._get(sql))['COUNT(*)'] as number;
   }
 
   /**
-   * Opens of creates a new sqlite database.
-   * @param {string} filename Path to sqlite database file
-   * @param {DatabaseOpenOptions} options Database options.
-   * By default, the function is going to create a new database if no database file exists.
-   * If options.shouldCreate is false, the function is going to fail on missing database file.
-   * @returns {Promise<Database>} New database object
+   * Returns active connection to database
+   * @return {AbstractConnection | null}
    */
-  static async open(filename: string, options?: DatabaseOpenOptions): Promise<Database> {
-    options = Object.assign({}, {
-      shouldCreate: false,
-      inMemory: false
-    } as DatabaseOpenOptions, options || {});
+  get connection(): AbstractConnection|null {
+    return this._connection;
+  }
 
-    if (filename.toLowerCase() === ':memory:') {
-      options.inMemory = true;
-      filename = 'memdb' + new Date().getTime() + (Math.random() * (10000 - 1) + 1);
+  /**
+   * Sets connection to database.
+   * You should manually initialize connection and call its `connect` method before or after passing to this method.
+   * After connection has been set, its ownership is given to this database, and it can disconnect from at in any time.
+   * @param {AbstractConnection | null} conn Database connection
+   * @return {Promise<void>} Resolved when old connection closed and new is set
+   */
+  async setConnection(conn: AbstractConnection|null): Promise<void> {
+    if (this._connection) {
+      await this._connection.disconnect();
     }
 
-    let db = new sqlite(filename, {
-      memory: options.inMemory,
-      fileMustExist: !options.shouldCreate
-    });
+    this._connection = conn;
+  }
 
-    db.exec('PRAGMA foreign_keys = TRUE');
-    return new Database(db);
+  static async fromConnection(connection: AbstractConnection): Promise<Database> {
+    const db = new Database();
+    await db.setConnection(connection);
+    return db;
   }
 
   /** Protected area **/
 
-  protected _db: sqlite;
+  protected _connection: AbstractConnection|null = null;
   protected _models: Model<any>[] = [];
   protected _schemaFlushed: boolean = false;
 
-  protected constructor(db: sqlite) {
-    this._db = db;
-  }
-
-  protected _logQuery(query: string, bound?: SqlBoundParams|any[]): void {
-    console.log('Q:', query, bound == null ? '' : (bound instanceof SqlBoundParams ? bound.sqlBindings : bound));
-  }
-
-  private _prepare(sql: string, bindings?: SqlBoundParams|any[]) {
-    this._logQuery(sql, bindings);
-    let prepared = this._db.prepare(sql);
-    if (bindings != null) {
-      return prepared.bind(bindings instanceof SqlBoundParams ? bindings.sqlBindings : bindings);
+  protected async _prepare(sql: string, bindings?: SqlBoundParams|any[]): Promise<IStatement> {
+    if (!this._connection) {
+      throw new Error("Cannot prepare sql statement: no database connection set");
     }
-    return prepared;
+
+    return this._connection.prepare(sql, bindings);
+  }
+
+  protected async _run(sql: string, bindings?: SqlBoundParams|any[]): Promise<IRunResult> {
+    return (await this._prepare(sql, bindings)).run();
+  }
+
+  protected async _get(sql: string, bindings?: SqlBoundParams|any[]): Promise<any> {
+    return (await this._prepare(sql, bindings)).get();
+  }
+
+  protected async _all(sql: string, bindings?: SqlBoundParams|any[]): Promise<any[]> {
+    return (await this._prepare(sql, bindings)).all();
   }
 }
 
