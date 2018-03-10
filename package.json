@@ -1,0 +1,47 @@
+{
+  "name": "organic-orm",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/bundle.js",
+  "typings": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "webpack --env.prod --config ./webpack/webpack.config.js",
+    "watch": "webpack --env.prod=false --watch --config ./webpack/webpack.config.js",
+    "build-tests": "webpack --env.prod=false --config ./webpack/tests.config.js",
+    "test": "mocha ./dist/test --recursive",
+    "build-and-test": "npm run build-tests && npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zenwarr/organic-orm.git"
+  },
+  "author": "zenwarr",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/zenwarr/organic-orm/issues"
+  },
+  "homepage": "https://github.com/zenwarr/organic-orm#readme",
+  "devDependencies": {
+    "@types/better-sqlite3": "^3.1.3",
+    "@types/chai": "^4.1.2",
+    "@types/chai-as-promised": "^7.1.0",
+    "@types/mocha": "^2.2.48",
+    "@types/moment": "^2.13.0",
+    "@types/numeral": "0.0.22",
+    "@types/sinon": "^4.3.0",
+    "@types/uuid": "^3.4.3",
+    "chai": "^4.1.2",
+    "chai-as-promised": "^7.1.1",
+    "mocha": "^5.0.4",
+    "sinon": "^4.4.2",
+    "ts-loader": "^4.0.1",
+    "ts-node": "^5.0.1",
+    "typescript": "^2.7.2",
+    "uuid": "^3.2.1",
+    "webpack": "^4.1.1",
+    "webpack-cli": "^2.0.11"
+  },
+  "dependencies": {
+    "better-sqlite3": "^4.1.0"
+  }
+}
